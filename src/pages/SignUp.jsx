@@ -22,7 +22,8 @@ function Signup({ user }) {
   const navigate = useNavigate();
 
   useEffect(() => {
-    sessionStorage.removeItem("claimedOffer");
+    // We NO LONGER clear claimedOffer on mount, so if a user clicked a promo banner
+    // and was redirected here, their banner offer is preserved.
   }, []);
 
   const handleSignup = async (e) => {
@@ -140,7 +141,12 @@ function Signup({ user }) {
           offerPercentage: 40,
           claimedAt: new Date().toISOString()
         }));
-        sessionStorage.removeItem("claimedOffer");
+        
+        // If they already clicked a promotional banner, DO NOT remove it.
+        // Payment.jsx prioritizes claimedOffer over newUserOffer.
+        if (!sessionStorage.getItem("claimedOffer")) {
+          sessionStorage.removeItem("claimedOffer");
+        }
       }
 
       if (referrerId) {
@@ -168,7 +174,13 @@ function Signup({ user }) {
       }
 
       setGeneratedCoupon(new40CouponCode);
-      setShowPromoModal(true);
+      
+      if (sessionStorage.getItem("claimedOffer")) {
+        toast.success("Account created! Your promotional offer is ready.");
+        navigate("/services");
+      } else {
+        setShowPromoModal(true);
+      }
     } catch (err) {
       toast.error(err.message || "Registration failed.");
     } finally {

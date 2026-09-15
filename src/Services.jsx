@@ -10,6 +10,7 @@ import FAQ from "./components/FAQ";
 import { FiArrowUp, FiSearch, FiX, FiChevronRight, FiChevronLeft, FiDroplet, FiArrowLeft } from "react-icons/fi";
 
 import { calculateServicePrice } from "./utils/priceUtils";
+import PromotionalBanners from "./components/PromotionalBanners";
 import "./Services.css";
 
 export default function Services({ user }) {
@@ -976,32 +977,7 @@ export default function Services({ user }) {
       )}
 
       {!isDedicated && (
-        <div 
-          className="new-user-promo-banner"
-          onClick={() => navigate("/signup")}
-          style={{ cursor: "pointer" }}
-        >
-          <div className="promo-banner-content">
-            <div className="promo-badge-icon">✨</div>
-            <div className="promo-text-group">
-              <h3 className="promo-banner-title">
-                New to Neatify? Get <span className="promo-highlight">40% OFF</span> Your First Service!
-              </h3>
-              <p className="promo-banner-sub">
-                Register a new account or mobile number to claim 40% OFF on any home cleaning or service booking!
-              </p>
-            </div>
-          </div>
-          <button
-            className="claim-promo-btn"
-            onClick={(e) => {
-              e.stopPropagation();
-              navigate("/signup");
-            }}
-          >
-            Claim 40% OFF →
-          </button>
-        </div>
+        <PromotionalBanners user={user} />
       )}
 
       <div id="services-section" ref={servicesRef} style={{ scrollMarginTop: "90px" }}>
