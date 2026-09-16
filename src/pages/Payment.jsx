@@ -155,15 +155,6 @@ export default function Payment({ user }) {
     if (servicesData) servicesData.forEach((s) => freshMap.set(s.id, s));
     if (addonsData) addonsData.forEach((s) => freshMap.set(s.id, s));
 
-    // Get claimed offer from session storage
-    let claimedOffer = null;
-    try {
-      const stored = sessionStorage.getItem("claimedOffer");
-      if (stored) claimedOffer = JSON.parse(stored);
-    } catch (e) {
-      console.error("Error parsing claimedOffer:", e);
-    }
-
     const { data: offersData } = await supabase
       .from("offers")
       .select("*")
@@ -173,8 +164,6 @@ export default function Payment({ user }) {
     const updatedServices = selectedServices.map((s) => {
       const fresh = freshMap.get(s.id);
       if (fresh) {
-        const isClaimed = claimedOffer && (claimedOffer.serviceId === fresh.id || claimedOffer.serviceId === null);
-
         // 1. Check for active offer override in DB
         const matchingOffer = (offersData || []).find(o => o.title === fresh.title);
 
@@ -183,16 +172,7 @@ export default function Payment({ user }) {
         let finalDiscountPercent = parseFloat(fresh.discount_percent) || 0;
         let finalDiscountLabel = (fresh.discount_label ? fresh.discount_label.toUpperCase() : null) || (finalDiscountPercent > 0 ? `${finalDiscountPercent}% OFF` : null);
 
-        if (isClaimed) {
-          const origPrice = fresh.original_price
-            ? parseFloat(String(fresh.original_price).replace(/[^\d.]/g, ""))
-            : parseFloat(String(fresh.price).replace(/[^\d.]/g, ""));
-          finalPrice = claimedOffer.offerPrice !== undefined 
-            ? claimedOffer.offerPrice 
-            : (origPrice > 0 ? Math.round(origPrice * (1 - claimedOffer.offerPercentage / 100)) : fresh.price);
-          finalDiscountPercent = claimedOffer.offerPercentage;
-          finalDiscountLabel = `${claimedOffer.offerPercentage}% OFF`;
-        } else if (matchingOffer) {
+        if (matchingOffer) {
           const offerPrice = matchingOffer.offer_price || matchingOffer.fixed_price;
           const offerPct = parseFloat(matchingOffer.offer_percentage) || 0;
           const originalPrice = fresh.original_price ? parseFloat(String(fresh.original_price).replace(/[^\d.]/g, "")) : null;
@@ -226,6 +206,28 @@ export default function Payment({ user }) {
     fetchFreshData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Run ONCE on mount
+
+  // Auto-apply claimed offer as a coupon on mount
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem("claimedOffer");
+      if (stored) {
+        const claimedOffer = JSON.parse(stored);
+        if (claimedOffer && claimedOffer.offerPercentage) {
+          setAppliedCoupon({
+            coupon_code: `BANNER${claimedOffer.offerPercentage}`,
+            discount_percentage: claimedOffer.offerPercentage,
+            discount_amount: null,
+            service_ids: claimedOffer.serviceId ? [claimedOffer.serviceId] : null,
+            bannerId: claimedOffer.bannerId
+          });
+          setCouponStatus({ type: "success", message: `Coupon applied! ${claimedOffer.offerPercentage}% discount` });
+        }
+      }
+    } catch (e) {
+      console.error("Error parsing claimedOffer:", e);
+    }
+  }, []);
 
   /* ================= FETCH ALL ADD-ONS ================= */
   useEffect(() => {
@@ -1174,6 +1176,7 @@ export default function Payment({ user }) {
         coupon_code: appliedCoupon ? appliedCoupon.coupon_code : null,
         coupon_discount_percentage: appliedCoupon ? appliedCoupon.discount_percentage : 0,
         coupon_discount_amount: Number(couponDiscount.toFixed(2)),
+        promotional_banner_id: appliedCoupon?.bannerId || null,
       };
 
       const { data: bookingRow, error: bookingError } = await supabase

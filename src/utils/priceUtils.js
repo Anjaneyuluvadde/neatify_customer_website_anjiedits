@@ -8,26 +8,7 @@
 export const calculateServicePrice = (service, offersData = [], claimedOffer = null) => {
     if (!service) return null;
 
-    // 1. Check for a session-claimed offer (highest priority for the current user)
-    if (claimedOffer && (claimedOffer.serviceId === service.id || claimedOffer.serviceId === null)) {
-        const origPrice = service.original_price 
-          ? parseFloat(String(service.original_price).replace(/[^\d.]/g, "")) 
-          : parseFloat(String(service.price).replace(/[^\d.]/g, ""));
-
-        const pct = claimedOffer.offerPercentage || 40;
-        const calcPrice = claimedOffer.offerPrice !== undefined 
-          ? claimedOffer.offerPrice 
-          : (origPrice > 0 ? Math.round(origPrice * (1 - pct / 100)) : service.price);
-
-        return {
-            price: calcPrice,
-            discount_percent: pct,
-            discount_label: claimedOffer.discountLabel || `${pct}% OFF`,
-            isClaimed: true
-        };
-    }
-
-    // 2. Check for active global offers in Supabase
+    // 1. Check for active global offers in Supabase
     const matchingOffer = (offersData || []).find(o => o.title === service.title);
 
     let finalPrice = service.price;

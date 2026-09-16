@@ -447,17 +447,8 @@ export default function ServiceDetail({ user }) {
 
   // Use the claimed offer price if it exists, otherwise calculate from original_price if a discount exists
   const displayPrice = useMemo(() => {
-    if (claimedOffer && claimedOffer.offerPrice !== undefined && claimedOffer.offerPrice !== null) {
-      return claimedOffer.offerPrice;
-    }
-    if (claimedOffer && claimedOffer.offerPercentage) {
-      const origPrice = service?.original_price 
-        ? parseFloat(String(service.original_price).replace(/[^\d.]/g, "")) 
-        : parseFloat(String(service?.price).replace(/[^\d.]/g, ""));
-      return Math.round(origPrice * (1 - claimedOffer.offerPercentage / 100));
-    }
     return service?.price;
-  }, [claimedOffer, service]);
+  }, [service]);
 
   /* ================= FETCH ADD ONS ================= */
   useEffect(() => {
@@ -487,35 +478,14 @@ export default function ServiceDetail({ user }) {
   /* ================= INIT MAIN SERVICE ================= */
   useEffect(() => {
     if (service) {
-      const isClaimed = claimedOffer && (claimedOffer.serviceId === service.id || claimedOffer.serviceId === null);
-      
-      // Calculate offer price from MRP if claimed or if native discount exists
-      // originalPrice and discountPercent removed as they were unsued here
-      const origPrice = service.original_price
-        ? parseFloat(String(service.original_price).replace(/[^\d.]/g, ""))
-        : parseFloat(String(service.price).replace(/[^\d.]/g, ""));
-      const calculatedPrice = isClaimed && claimedOffer.offerPrice !== undefined 
-        ? claimedOffer.offerPrice 
-        : (isClaimed && claimedOffer.offerPercentage ? Math.round(origPrice * (1 - claimedOffer.offerPercentage / 100)) : service.price);
-
       setSelectedServices([
         {
-          id: service.id,
-          title: service.title,
-          duration: service.duration,
-          // Apply claimed offer price if applicable, otherwise use calculated/base price
-          price: calculatedPrice,
-          original_price: service.original_price,
-          // Apply claimed offer percentage
-          discount_percent: isClaimed ? claimedOffer.offerPercentage : service.discount_percent,
-          discount_label: isClaimed ? `${claimedOffer.offerPercentage}% OFF` : (service.discount_label ? service.discount_label.toUpperCase() : null),
-          image: service.image,
-          work_includes: service.work_includes,
+          ...service,
           quantity: 1,
         },
       ]);
     }
-  }, [service, claimedOffer]);
+  }, [service]);
 
   /* ================= ADD ADD-ON ================= */
   const addService = (svc) => {

@@ -480,14 +480,6 @@ export default function Booking({ user }) {
           addonsData.forEach((s) => freshMap.set(s.id, { ...s, isAddon: true }));
         }
 
-        let claimedOffer = null;
-        try {
-          const stored = sessionStorage.getItem("claimedOffer");
-          if (stored) claimedOffer = JSON.parse(stored);
-        } catch (e) {
-          console.error("Error parsing claimedOffer:", e);
-        }
-
         const { data: offersData } = await supabase
           .from("offers")
           .select("*")
@@ -498,7 +490,6 @@ export default function Booking({ user }) {
           prev.map((s) => {
             const fresh = freshMap.get(s.id);
             if (fresh) {
-              const isClaimed = claimedOffer && (claimedOffer.serviceId === fresh.id || claimedOffer.serviceId === null);
               const matchingOffer = (offersData || []).find((o) => o.title === fresh.title);
 
               let finalPrice = fresh.price;
@@ -507,16 +498,7 @@ export default function Booking({ user }) {
                 (fresh.discount_label ? fresh.discount_label.toUpperCase() : null) ||
                 (finalDiscountPercent > 0 ? `${finalDiscountPercent}% OFF` : null);
 
-              if (isClaimed) {
-                const origPrice = fresh.original_price
-                  ? parseFloat(String(fresh.original_price).replace(/[^\d.]/g, ""))
-                  : parseFloat(String(fresh.price).replace(/[^\d.]/g, ""));
-                finalPrice = claimedOffer.offerPrice !== undefined 
-                  ? claimedOffer.offerPrice 
-                  : (origPrice > 0 ? Math.round(origPrice * (1 - claimedOffer.offerPercentage / 100)) : fresh.price);
-                finalDiscountPercent = claimedOffer.offerPercentage;
-                finalDiscountLabel = `${claimedOffer.offerPercentage}% OFF`;
-              } else if (matchingOffer) {
+              if (matchingOffer) {
                 const offerPrice = matchingOffer.offer_price || matchingOffer.fixed_price;
                 const offerPct = parseFloat(matchingOffer.offer_percentage) || 0;
                 const originalPrice = fresh.original_price

@@ -1693,52 +1693,70 @@ footer .footer-content {
 }
 
 /* ================= PROMOTIONAL BANNER ================= */
-.promotional-banners-container {
+
+.promotional-slider-wrapper {
   width: 100%;
-  max-width: 1200px;
+  max-width: 850px;
   margin: 20px auto;
+  position: relative;
+  overflow: hidden; /* Hide the sliding overflow */
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+}
+
+.promotional-banners-track {
   display: flex;
-  flex-direction: column;
-  gap: 16px;
-  padding: 0 16px; /* For mobile edges */
+  transition: transform 0.5s ease-in-out;
+  width: 100%;
 }
 
 .promotional-banner-item {
   width: 100%;
-  height: 180px;
-  border-radius: 16px;
-  overflow: hidden;
-  display: block;
-  background-color: #f8fafc;
+  flex: 0 0 100%; /* Each banner is exactly the width of the wrapper */
+  max-height: 260px;
+  background: #ffffff;
   cursor: pointer;
-  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
-  border: 1px solid rgba(0, 0, 0, 0.05);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.promotional-banner-item:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.12);
+  display: block;
 }
 
 .promotional-banner-image {
   width: 100%;
   height: 100%;
-  object-fit: fill;
+  object-fit: cover;
   display: block;
 }
 
-@media (max-width: 1024px) {
-  .promotional-banner-item {
-    border-radius: 14px;
-  }
+/* Dots styling */
+.promotional-slider-dots {
+  position: absolute;
+  bottom: 12px;
+  left: 0;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
 }
 
+.slider-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  transition: background-color 0.3s ease, transform 0.3s ease;
+}
+
+.slider-dot.active {
+  background-color: #ffffff;
+  transform: scale(1.3);
+}
+
+/* ================= MOBILE ================= */
+
 @media (max-width: 768px) {
-  .promotional-banners-container {
+  .promotional-slider-wrapper {
     margin: 12px auto;
-  }
-  .promotional-banner-item {
+    width: 95%; /* slight margin on mobile */
     border-radius: 12px;
   }
 }
