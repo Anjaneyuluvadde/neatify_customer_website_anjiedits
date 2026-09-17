@@ -1,8 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from './Toast/ToastContext';
 import usePromotionalBanners from '../hooks/usePromotionalBanners';
 import BannerServiceModal from './BannerServiceModal';
+import gsap from 'gsap';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { useGSAP } from '@gsap/react';
+
+gsap.registerPlugin(ScrollTrigger);
+
 
 export default function PromotionalBanners({ user }) {
   const { banners, loading } = usePromotionalBanners(user);
@@ -10,6 +16,11 @@ export default function PromotionalBanners({ user }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const navigate = useNavigate();
   const toast = useToast();
+  
+  const stageRef = useRef(null);
+  const characterRef = useRef(null);
+  const revealRef = useRef(null);
+  const bannerContainerRef = useRef(null);
 
   const applyClaim = (banner, serviceId = null) => {
     const claimType = (banner.customer_type === "new" || banner.customer_type === "new_user") 
@@ -63,44 +74,115 @@ export default function PromotionalBanners({ user }) {
     return () => clearInterval(interval);
   }, [banners.length]);
 
+  useGSAP(() => {
+    if (loading || banners.length === 0 || !stageRef.current) return;
+
+    const mm = gsap.matchMedia();
+
+    mm.add({
+      isDesktop: "(min-width: 1025px)",
+      isTablet: "(min-width: 641px) and (max-width: 1024px)",
+      isMobile: "(max-width: 640px)",
+      reduceMotion: "(prefers-reduced-motion: reduce)"
+    }, (context) => {
+      let { isTablet, isMobile, reduceMotion } = context.conditions;
+
+      if (reduceMotion) {
+        gsap.set(revealRef.current, { clearProps: "all", clipPath: "inset(0 0% 0 0)" });
+        gsap.set(characterRef.current, { display: "none" });
+        return;
+      }
+
+      // 1. Initial State
+      gsap.set(characterRef.current, { opacity: 0, x: 250, scale: 0.9 });
+      gsap.set(revealRef.current, { clipPath: "inset(0 100% 0 0)" });
+      gsap.set(bannerContainerRef.current, { scale: 0.97 });
+
+      // Stage width calculation to wipe across the screen based on device
+      const wipeDistance = isMobile ? -300 : isTablet ? -600 : -850;
+
+      const tl = gsap.timeline({
+        scrollTrigger: {
+          trigger: stageRef.current,
+          start: "top 75%",
+          end: "bottom 25%",
+          scrub: 1,
+        }
+      });
+
+      // 2. Character enters (0-15%)
+      tl.to(characterRef.current, { opacity: 1, x: 0, scale: 1, duration: 0.15 })
+        // 3. Wiping motion & Reveal Banner simultaneously (15-55%)
+        .to(characterRef.current, { x: wipeDistance, duration: 0.4 }, "+=0")
+        .to(revealRef.current, { clipPath: "inset(0 0% 0 0)", duration: 0.4 }, "<")
+        // 4. Banner bounce (55-70%)
+        .to(bannerContainerRef.current, { scale: 1, duration: 0.15, ease: "power1.out" })
+        // 5. Settling and small idle float (70-80%)
+        .to(characterRef.current, { y: -10, repeat: 1, yoyo: true, duration: 0.1 }, "<")
+        // 6. Exit (80-100%)
+        .to([characterRef.current, revealRef.current], { opacity: 0, y: -20, duration: 0.2 }, "+=0.1");
+    });
+
+    // Force ScrollTrigger to recalculate after layout shifts (e.g. from routing or fonts loading)
+    const timeout = setTimeout(() => {
+      ScrollTrigger.refresh();
+    }, 500);
+
+    return () => {
+      clearTimeout(timeout);
+      mm.revert();
+    };
+  }, { dependencies: [banners.length, loading], scope: stageRef });
+
   if (loading || banners.length === 0) {
     return null;
   }
 
   return (
     <>
-      <div className="promotional-slider-wrapper">
-        <div 
-          className="promotional-banners-track"
-          style={{ transform: `translateX(-${currentIndex * 100}%)` }}
-        >
-          {banners.map((banner) => (
-            <div 
-              key={banner.id} 
-              className="promotional-banner-item"
-              onClick={() => handleBannerClick(banner)}
-            >
-              <img 
-                src={banner.image_url} 
-                alt={banner.title || "Promotional Banner"} 
-                className="promotional-banner-image"
-                onError={(e) => { e.target.style.display = 'none'; }}
-              />
-            </div>
-          ))}
-        </div>
-
-        {banners.length > 1 && (
-          <div className="promotional-slider-dots">
-            {banners.map((_, idx) => (
-              <span 
-                key={idx} 
-                className={`slider-dot ${idx === currentIndex ? 'active' : ''}`}
-                onClick={() => setCurrentIndex(idx)}
-              />
-            ))}
+      <div className="promotion-animation-section" ref={stageRef}>
+        <div className="promotion-animation-stage">
+          
+          <div className="cleaning-character" ref={characterRef}>
+            <img src="/assets/3dman.png" alt="Cleaning Character" className="cleaning-character-img" />
           </div>
-        )}
+
+          <div className="promotion-reveal" ref={revealRef}>
+            <div className="promotional-slider-wrapper" ref={bannerContainerRef}>
+              <div 
+                className="promotional-banners-track"
+                style={{ transform: `translateX(-${currentIndex * 100}%)` }}
+              >
+                {banners.map((banner) => (
+                  <div 
+                    key={banner.id} 
+                    className="promotional-banner-item"
+                    onClick={() => handleBannerClick(banner)}
+                  >
+                    <img 
+                      src={banner.image_url} 
+                      alt={banner.title || "Promotional Banner"} 
+                      className="promotional-banner-image"
+                      onError={(e) => { e.target.style.display = 'none'; }}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              {banners.length > 1 && (
+                <div className="promotional-slider-dots">
+                  {banners.map((_, idx) => (
+                    <span 
+                      key={idx} 
+                      className={`slider-dot ${idx === currentIndex ? 'active' : ''}`}
+                      onClick={() => setCurrentIndex(idx)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
       {activeBanner && (

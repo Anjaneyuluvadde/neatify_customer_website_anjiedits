@@ -1694,13 +1694,60 @@ footer .footer-content {
 
 /* ================= PROMOTIONAL BANNER ================= */
 
+.promotion-animation-section {
+  position: relative;
+  width: 100%;
+  max-width: 1200px;
+  min-height: 400px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.promotion-animation-stage {
+  position: relative;
+  width: min(850px, 90vw);
+  aspect-ratio: 850 / 260;
+  margin: 0 auto;
+}
+
+.promotion-reveal {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  clip-path: inset(0 100% 0 0); /* initially hidden from the right */
+  overflow: visible; 
+  /* the slider wrapper inside will have overflow hidden */
+}
+
+.cleaning-character {
+  position: absolute;
+  top: 50%;
+  right: -60px; /* start slightly off the right edge of the stage */
+  transform: translateY(-50%) scale(0.9);
+  z-index: 10;
+  opacity: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.cleaning-character-img {
+  width: 180px;
+  height: auto;
+  filter: drop-shadow(0 8px 12px rgba(0,0,0,0.15));
+}
+
 .promotional-slider-wrapper {
   width: 100%;
-  max-width: 850px;
-  margin: 20px auto;
+  height: 100%;
   position: relative;
   overflow: hidden; /* Hide the sliding overflow */
-  border-radius: 16px;
+  border-radius: 20px;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
 }
 
@@ -1708,12 +1755,13 @@ footer .footer-content {
   display: flex;
   transition: transform 0.5s ease-in-out;
   width: 100%;
+  height: 100%;
 }
 
 .promotional-banner-item {
   width: 100%;
+  height: 100%;
   flex: 0 0 100%; /* Each banner is exactly the width of the wrapper */
-  max-height: 260px;
   background: #ffffff;
   cursor: pointer;
   display: block;
@@ -1754,9 +1802,10 @@ footer .footer-content {
 /* ================= MOBILE ================= */
 
 @media (max-width: 768px) {
-  .promotional-slider-wrapper {
-    margin: 12px auto;
-    width: 95%; /* slight margin on mobile */
-    border-radius: 12px;
+  .promotion-animation-section {
+    min-height: 300px;
+  }
+  .cleaning-character-img {
+    width: 120px;
   }
 }
