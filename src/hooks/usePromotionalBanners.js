@@ -16,6 +16,7 @@ export default function usePromotionalBanners(user) {
         .from("promotional_banners")
         .select("*")
         .eq("is_active", true)
+        .eq("banner_type", "website")
         .order("display_order", { ascending: true });
 
       if (fetchError) {
