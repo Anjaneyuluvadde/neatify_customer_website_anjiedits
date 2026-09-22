@@ -185,6 +185,24 @@ export default function ServiceDetail({ user }) {
   const { id } = useParams();
   const navigate = useNavigate();
 
+  const [profileServiceSelected, setProfileServiceSelected] = useState(null);
+  const [profileBannerSelected, setProfileBannerSelected] = useState(null);
+
+  useEffect(() => {
+    if (user && user.id) {
+       supabase.from("profile").select("service_selected, promotional_banner_selected").eq("id", user.id).single().then(({data, error}) => {
+         if (data && !error) {
+           setProfileServiceSelected(data.service_selected);
+           setProfileBannerSelected(data.promotional_banner_selected);
+         }
+       });
+    } else {
+       setProfileServiceSelected(null);
+       setProfileBannerSelected(null);
+    }
+  }, [user]);
+
+
   const [fetchedService, setFetchedService] = useState(null);
   const [allServices, setAllServices] = useState(state?.allServices || []);
   const [isFetching, setIsFetching] = useState(!state?.service);
@@ -435,6 +453,23 @@ export default function ServiceDetail({ user }) {
       const stored = sessionStorage.getItem("claimedOffer");
       if (!stored) return null;
       const parsed = JSON.parse(stored);
+
+      // Validate session state belongs to the current user
+      if (parsed.userId && user?.id && parsed.userId !== user.id) {
+        return null; // Ignore stale session state from another user
+      }
+
+      if (profileServiceSelected && profileBannerSelected) {
+        const isPromotionalService = profileServiceSelected === (service?.title || service?.name);
+        const isFromThisPromotionalBanner = profileBannerSelected === parsed.bannerId;
+        const shouldApplyPromotionalDiscount = isPromotionalService && isFromThisPromotionalBanner;
+        if (shouldApplyPromotionalDiscount) {
+          return parsed;
+        } else {
+          return null;
+        }
+      }
+
       // Only apply if it's the same service or is a general offer (serviceId is null)
       if (parsed.serviceId === service?.id || parsed.serviceId === null) {
         return parsed;
@@ -443,7 +478,7 @@ export default function ServiceDetail({ user }) {
       console.error("Error parsing claimedOffer:", e);
     }
     return null;
-  }, [service]);
+  }, [service, profileServiceSelected, profileBannerSelected, user]);
 
   // Use the claimed offer price if it exists, otherwise calculate from original_price if a discount exists
   const displayPrice = useMemo(() => {

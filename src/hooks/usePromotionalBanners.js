@@ -3,6 +3,7 @@ import { supabase } from '../components/supabaseClient';
 
 export default function usePromotionalBanners(user) {
   const [banners, setBanners] = useState([]);
+  const [activePromotionalBookings, setActivePromotionalBookings] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -30,13 +31,14 @@ export default function usePromotionalBanners(user) {
         let customerPincode = null;
         let customerHubIds = [];
         const usedBannerIds = new Set();
+        const currentActiveBookings = {};
 
         // 2. Fetch User specific info
         if (user && user.id) {
           // User Bookings
           const { data: bookings, error: bookingsError } = await supabase
             .from("bookings")
-            .select("work_status, promotional_banner_id")
+            .select("work_status, promotional_banner_id, services")
             .eq("user_id", user.id);
 
           if (!bookingsError && bookings) {
@@ -46,6 +48,16 @@ export default function usePromotionalBanners(user) {
                 completedBookingCount++;
                 if (booking.promotional_banner_id) {
                   usedBannerIds.add(booking.promotional_banner_id);
+                }
+              } else {
+                // If not completed, it's potentially an active promotional booking
+                if (booking.promotional_banner_id && booking.services) {
+                  const promotionalServiceIds = booking.services.map(s => s.id);
+                  currentActiveBookings[booking.promotional_banner_id] = {
+                    status,
+                    serviceIds: promotionalServiceIds,
+                    services: booking.services
+                  };
                 }
               }
             });
@@ -141,13 +153,16 @@ export default function usePromotionalBanners(user) {
         });
 
         setBanners(eligibleBanners);
+        setActivePromotionalBookings(currentActiveBookings);
       } else {
         setBanners([]);
+        setActivePromotionalBookings({});
       }
     } catch (err) {
       console.error("Error evaluating banner eligibility:", err);
       setError(err);
       setBanners([]);
+      setActivePromotionalBookings({});
     } finally {
       setLoading(false);
     }
@@ -157,5 +172,5 @@ export default function usePromotionalBanners(user) {
     fetchPromotionalBanners();
   }, [fetchPromotionalBanners]);
 
-  return { banners, loading, error, refetch: fetchPromotionalBanners };
+  return { banners, activePromotionalBookings, loading, error, refetch: fetchPromotionalBanners };
 }

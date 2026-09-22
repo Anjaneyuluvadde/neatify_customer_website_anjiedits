@@ -6,12 +6,13 @@ import BannerServiceModal from './BannerServiceModal';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
+import { supabase } from './supabaseClient';
 
 gsap.registerPlugin(ScrollTrigger);
 
 
 export default function PromotionalBanners({ user }) {
-  const { banners, loading } = usePromotionalBanners(user);
+  const { banners, activePromotionalBookings, loading } = usePromotionalBanners(user);
   const [activeBanner, setActiveBanner] = useState(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const navigate = useNavigate();
@@ -22,10 +23,46 @@ export default function PromotionalBanners({ user }) {
   const revealRef = useRef(null);
   const bannerContainerRef = useRef(null);
 
-  const applyClaim = (banner, serviceId = null) => {
+  const applyClaim = async (banner, serviceId = null, serviceTitle = null) => {
     const claimType = (banner.customer_type === "new" || banner.customer_type === "new_user") 
       ? "NEW_USER" 
       : "PROMOTIONAL_BANNER";
+
+    const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !currentUser) {
+      navigate("/signup");
+      return;
+    }
+
+    if (serviceId && serviceTitle) {
+      try {
+        const { error } = await supabase
+          .from("profile")
+          .update({
+            service_selected: serviceTitle,
+            promotional_banner_selected: banner.id,
+          })
+          .eq("id", currentUser.id);
+
+        if (error) {
+          console.error("Failed to save promotional selection:", error);
+          toast.error("Failed to save selection. Please try again.");
+          return;
+        }
+
+        console.log("PROMO PROFILE UPDATE", {
+          userId: currentUser.id,
+          serviceSelected: serviceTitle,
+          promotionalBannerSelected: banner.id,
+        });
+
+      } catch (err) {
+        console.error("Error updating profile with promotional selection:", err);
+        toast.error("Failed to save selection. Please try again.");
+        return;
+      }
+    }
 
     const claimObject = {
       type: claimType,
@@ -33,13 +70,13 @@ export default function PromotionalBanners({ user }) {
       offerPercentage: banner.offer_percentage,
       claimedAt: new Date().toISOString(),
       serviceId: serviceId || null,
+      serviceTitle: serviceTitle || null,
+      userId: currentUser.id, // Bind session state to current user
     };
 
     sessionStorage.setItem("claimedOffer", JSON.stringify(claimObject));
 
-    if (!user) {
-      navigate("/signup");
-    } else if (serviceId) {
+    if (serviceId) {
       toast.success(`Offer Applied! ${banner.offer_percentage}% discount is ready for your booking.`);
       navigate(`/service/${serviceId}`);
     } else {
@@ -51,7 +88,70 @@ export default function PromotionalBanners({ user }) {
     }
   };
 
-  const handleBannerClick = (banner) => {
+  const handleBannerClick = async (banner) => {
+    const { data: { user: currentUser } } = await supabase.auth.getUser();
+
+    // 1. Check if there is an active promotional booking for this banner (STAGE 2 - DB)
+    if (currentUser && activePromotionalBookings && activePromotionalBookings[banner.id]) {
+      const activeBooking = activePromotionalBookings[banner.id];
+      const serviceId = activeBooking.serviceIds?.[0];
+      const serviceTitle = activeBooking.services?.[0]?.title || activeBooking.services?.[0]?.name || "the selected service";
+      
+      toast.info(`You have already selected ${serviceTitle} for the ${banner.offer_percentage}% discount.`);
+      
+      if (serviceId) {
+        // Repopulate sessionStorage in case this is a new tab
+        const claimObject = {
+          type: "PROMOTIONAL_BANNER",
+          bannerId: banner.id,
+          offerPercentage: banner.offer_percentage,
+          claimedAt: new Date().toISOString(),
+          serviceId: serviceId,
+          serviceTitle: serviceTitle,
+          userId: currentUser.id,
+        };
+        sessionStorage.setItem("claimedOffer", JSON.stringify(claimObject));
+        navigate(`/service/${serviceId}`);
+      }
+      return; // Do not open service selection modal
+    }
+
+    // 2. Read CURRENT user's profile to prevent stale state across users
+    if (currentUser) {
+      try {
+        const { data: profile } = await supabase
+          .from("profile")
+          .select("service_selected, promotional_banner_selected")
+          .eq("id", currentUser.id)
+          .single();
+
+        const hasSelectedThisBanner = profile?.promotional_banner_selected === banner.id;
+        const hasSelectedService = Boolean(profile?.service_selected);
+
+        if (hasSelectedThisBanner && hasSelectedService) {
+          toast.info(`You have already selected ${profile.service_selected} for the ${banner.offer_percentage}% discount.`);
+
+          // Try to recover the ID from sessionStorage to navigate
+          try {
+            const stored = sessionStorage.getItem("claimedOffer");
+            if (stored) {
+              const claimedOffer = JSON.parse(stored);
+              if (claimedOffer.bannerId === banner.id && claimedOffer.userId === currentUser.id) {
+                if (claimedOffer.serviceId) {
+                  navigate(`/service/${claimedOffer.serviceId}`);
+                }
+              }
+            }
+          } catch (e) {}
+
+          return; // Do not open service selection modal
+        }
+      } catch (err) {
+        console.error("Error reading profile for promotional selection:", err);
+      }
+    }
+
+    // 3. AVAILABLE state: Open selection modal or apply immediately
     if (banner.service_ids && banner.service_ids.length > 0) {
       setActiveBanner(banner);
     } else {
@@ -61,7 +161,7 @@ export default function PromotionalBanners({ user }) {
 
   const handleServiceSelect = (service) => {
     setActiveBanner(null); // Close modal
-    applyClaim(activeBanner, service.id);
+    applyClaim(activeBanner, service.id, service.title);
   };
 
   useEffect(() => {

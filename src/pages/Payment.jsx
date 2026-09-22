@@ -214,14 +214,19 @@ export default function Payment({ user }) {
       if (stored) {
         const claimedOffer = JSON.parse(stored);
         if (claimedOffer && claimedOffer.offerPercentage) {
-          setAppliedCoupon({
-            coupon_code: `BANNER${claimedOffer.offerPercentage}`,
-            discount_percentage: claimedOffer.offerPercentage,
-            discount_amount: null,
-            service_ids: claimedOffer.serviceId ? [claimedOffer.serviceId] : null,
-            bannerId: claimedOffer.bannerId
-          });
-          setCouponStatus({ type: "success", message: `Coupon applied! ${claimedOffer.offerPercentage}% discount` });
+          // Only auto-apply if the service is actually in the cart (or if it's a general coupon with no serviceId)
+          const isServiceInCart = !claimedOffer.serviceId || selectedServices.some(s => String(s.id || s.service_id) === String(claimedOffer.serviceId));
+          
+          if (isServiceInCart) {
+            setAppliedCoupon({
+              coupon_code: `BANNER${claimedOffer.offerPercentage}`,
+              discount_percentage: claimedOffer.offerPercentage,
+              discount_amount: null,
+              service_ids: claimedOffer.serviceId ? [claimedOffer.serviceId] : null,
+              bannerId: claimedOffer.bannerId
+            });
+            setCouponStatus({ type: "success", message: `Coupon applied! ${claimedOffer.offerPercentage}% discount` });
+          }
         }
       }
     } catch (e) {
@@ -488,6 +493,9 @@ export default function Payment({ user }) {
     }
   };
 
+  const [profileServiceSelected, setProfileServiceSelected] = useState(null);
+  const [profileBannerSelected, setProfileBannerSelected] = useState(null);
+
   const initDone = useRef(false);
   useEffect(() => {
     if (initDone.current) return;
@@ -503,13 +511,15 @@ export default function Payment({ user }) {
 
       const { data } = await supabase
         .from("profile")
-        .select("full_name,email,phone,address,pincode")
+        .select("full_name,email,phone,address,pincode,service_selected,promotional_banner_selected")
         .eq("id", user.id)
         .single();
 
       if (data) {
         setFirstName(data.full_name || "");
         setEmail(data.email || user.email || "");
+        setProfileServiceSelected(data.service_selected || null);
+        setProfileBannerSelected(data.promotional_banner_selected || null);
 
         const rawPhone = data.phone || "";
         const cleanPhone = rawPhone.replace(/\D/g, "");
@@ -644,6 +654,21 @@ export default function Payment({ user }) {
 
       try {
         const { data: { user } } = await supabase.auth.getUser();
+
+        // Check the database directly to avoid React state race conditions during mount
+        if (user) {
+          const { data: profile } = await supabase
+            .from("profile")
+            .select("promotional_banner_selected")
+            .eq("id", user.id)
+            .single();
+
+          // If the user already has a promotional banner selected, they are in the promo flow.
+          // Do NOT auto-apply a generic new-user coupon to their other services.
+          if (profile && profile.promotional_banner_selected) {
+            return;
+          }
+        }
 
         const cleanPhone = phone ? phone.replace(/\D/g, "").slice(-10) : "";
         const userEmail = (user && user.email) ? user.email.toLowerCase() : "";
@@ -976,10 +1001,78 @@ export default function Payment({ user }) {
   }, [selectedServices, totalAmount, globalTaxRate]);
 
   const finalSubtotal = totalAmount;
+  const servicesWithPromotions = useMemo(() => {
+    // 2. IDENTIFY PROMOTIONAL COUPON
+    const isPromotionalCoupon = 
+      appliedCoupon?.bannerId || 
+      appliedCoupon?.promotional_banner_id || 
+      appliedCoupon?.source === "promotional_banner";
+
+    return selectedServices.map(s => {
+      const serviceIdStr = String(s.id || s.service_id || '');
+      const currentPrice = parsePrice(s.price);
+      const quantity = s.quantity || 1;
+      
+      let promoDiscountPerUnit = 0;
+
+      if (isPromotionalCoupon) {
+        // 4. CHECK SERVICE MATCH
+        const isSelectedPromotionalService = profileServiceSelected === (s.title || s.name);
+        
+        // 3. CHECK BANNER MATCH
+        const isSelectedPromotionalBanner = profileBannerSelected === appliedCoupon.bannerId;
+        
+        // Use session storage fallback only if profile selection is missing
+        let useSessionFallback = false;
+        if (!profileServiceSelected && !profileBannerSelected) {
+          try {
+            const stored = sessionStorage.getItem("claimedOffer");
+            if (stored) {
+              const claimedOffer = JSON.parse(stored);
+              // Only use session fallback if it explicitly belongs to the current user
+              const belongsToCurrentUser = claimedOffer.userId && user?.id && claimedOffer.userId === user.id;
+              
+              if (belongsToCurrentUser && claimedOffer && claimedOffer.serviceId && serviceIdStr === String(claimedOffer.serviceId)) {
+                useSessionFallback = true;
+              }
+            }
+          } catch(e) {}
+        }
+        
+        // 6. servicesWithPromotions
+        const shouldApplyPromotionalDiscount = (isSelectedPromotionalService && isSelectedPromotionalBanner) || useSessionFallback;
+
+        if (shouldApplyPromotionalDiscount && appliedCoupon) {
+           promoDiscountPerUnit = (currentPrice * parseFloat(appliedCoupon.discount_percentage)) / 100;
+        }
+      }
+
+      return {
+        ...s,
+        promoDiscountPerUnit,
+        totalPromoDiscount: promoDiscountPerUnit * quantity,
+        displayOriginalPrice: currentPrice,
+        displayFinalPrice: currentPrice - promoDiscountPerUnit,
+      };
+    });
+  }, [selectedServices, appliedCoupon, profileServiceSelected, profileBannerSelected, user]);
+
   const couponDiscount = useMemo(() => {
     if (!appliedCoupon) return 0;
 
-    // Check if coupon is restricted to specific service IDs
+    // 2. IDENTIFY PROMOTIONAL COUPON
+    const isPromotionalCoupon = 
+      appliedCoupon?.bannerId || 
+      appliedCoupon?.promotional_banner_id || 
+      appliedCoupon?.source === "promotional_banner";
+
+    if (isPromotionalCoupon) {
+      // 7. couponDiscount
+      // For a promotional banner coupon, MUST come ONLY from the service-level calculation
+      return servicesWithPromotions.reduce((sum, s) => sum + s.totalPromoDiscount, 0);
+    }
+
+    // --- NORMAL COUPON LOGIC (Fallback for non-promotional coupons) ---
     let allowedServiceIds = null;
     if (appliedCoupon.service_ids) {
       if (Array.isArray(appliedCoupon.service_ids)) {
@@ -990,22 +1083,16 @@ export default function Payment({ user }) {
             ? JSON.parse(appliedCoupon.service_ids)
             : appliedCoupon.service_ids;
         } catch (e) {
-          // Fallback if it is a comma-separated string
           allowedServiceIds = String(appliedCoupon.service_ids).split(',').map(id => id.trim());
         }
       }
     }
 
-    // Filter services that are eligible for this coupon
     const eligibleServices = selectedServices.filter(s => {
       const serviceIdStr = String(s.id || s.service_id || '');
-
-      // Check singular service_id constraint
       if (appliedCoupon.service_id && String(appliedCoupon.service_id) !== serviceIdStr) {
         return false;
       }
-
-      // Check plural service_ids constraint
       if (allowedServiceIds && allowedServiceIds.length > 0) {
         return allowedServiceIds.some(allowedId => String(allowedId) === serviceIdStr);
       }
@@ -1013,7 +1100,7 @@ export default function Payment({ user }) {
     });
 
     const eligibleSubtotal = eligibleServices.reduce((sum, s) => {
-      return sum + parsePrice(s.price);
+      return sum + (parsePrice(s.price) * (s.quantity || 1));
     }, 0);
 
     if (appliedCoupon.discount_amount && appliedCoupon.discount_amount > 0) {
@@ -1022,7 +1109,7 @@ export default function Payment({ user }) {
 
     const pct = parseFloat(appliedCoupon.discount_percentage) || 0;
     return (eligibleSubtotal * pct) / 100;
-  }, [appliedCoupon, selectedServices]);
+  }, [appliedCoupon, servicesWithPromotions, selectedServices, profileBannerSelected]);
 
   const totalAmountAfterCoupon = finalSubtotal - couponDiscount;
   const finalTotalAmountBeforeWallet = totalAmountAfterCoupon + totalTax;
@@ -1518,7 +1605,7 @@ export default function Payment({ user }) {
           <div className="payment-right-section">
             <h3 className="section-title">Service Details</h3>
             <div className="services-wrapper">
-              {selectedServices.map((service, idx) => (
+              {servicesWithPromotions.map((service, idx) => (
                 <div className="service-item" key={idx}>
                   <div className="summary-item-title-row">
                     <strong className="service-item-title">{service.title || service.name}</strong>
@@ -1530,34 +1617,51 @@ export default function Payment({ user }) {
                     {formatDuration(service.duration)}
                   </p>
                   <div className="service-item-price-row">
-                    {service.original_price && (
-                      <span className="mrp">
-                        {getCurrency(service.original_price)}{formatPrice(service.original_price)}
-                      </span>
-                    )}
-                    <span className="service-item-price">
-                      {getCurrency(service.price)}{formatPrice(service.price)}
-                    </span>
-                    {(service.discount_label || service.discount_percent > 0 || (service.original_price && service.price)) && (
-                      <span className="offer-badge">
-                        {(() => {
-                          const calculatedPct = (service.original_price && service.price)
-                            ? Math.round((1 - parseFloat(String(service.price).replace(/[^\d.]/g, "")) / parseFloat(String(service.original_price).replace(/[^\d.]/g, ""))) * 100)
-                            : 0;
+                    {service.promoDiscountPerUnit > 0 ? (
+                      <div className="promo-breakdown" style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '100%', marginTop: '6px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#64748b' }}>
+                          <span>Original Price:</span>
+                          <span style={{ textDecoration: 'line-through' }}>{getCurrency(service.displayOriginalPrice)}{formatPrice(service.displayOriginalPrice)}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#10b981', fontWeight: '600' }}>
+                          <span>Promo Discount:</span>
+                          <span>- {getCurrency(service.promoDiscountPerUnit)}{formatPrice(service.promoDiscountPerUnit)}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', color: '#0f172a', fontWeight: '700', marginTop: '4px', paddingTop: '4px', borderTop: '1px solid #e2e8f0' }}>
+                          <span>Final Price:</span>
+                          <span>{getCurrency(service.displayFinalPrice)}{formatPrice(service.displayFinalPrice)}</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        {service.original_price && (
+                          <span className="mrp">
+                            {getCurrency(service.original_price)}{formatPrice(service.original_price)}
+                          </span>
+                        )}
+                        <span className="service-item-price">
+                          {getCurrency(service.price)}{formatPrice(service.price)}
+                        </span>
+                        {(service.discount_label || service.discount_percent > 0 || (service.original_price && service.price)) && (
+                          <span className="offer-badge">
+                            {(() => {
+                              const calculatedPct = (service.original_price && service.price)
+                                ? Math.round((1 - parseFloat(String(service.price).replace(/[^\d.]/g, "")) / parseFloat(String(service.original_price).replace(/[^\d.]/g, ""))) * 100)
+                                : 0;
 
-                          // For Add-ons: Prioritize calculated percentage to match selection modal
-                          if (service.isAddon) {
-                            if (calculatedPct > 0) return `${calculatedPct}% OFF`;
-                            if (service.discount_percent > 0) return `${service.discount_percent}% OFF`;
-                            return service.discount_label || "SPECIAL OFFER";
-                          }
+                              if (service.isAddon) {
+                                if (calculatedPct > 0) return `${calculatedPct}% OFF`;
+                                if (service.discount_percent > 0) return `${service.discount_percent}% OFF`;
+                                return service.discount_label || "SPECIAL OFFER";
+                              }
 
-                          // For Main Services: Prioritize the official discount_label (e.g. SPECIAL OFFER)
-                          if (service.discount_label) return service.discount_label;
-                          if (calculatedPct > 0) return `${calculatedPct}% OFF`;
-                          return "SPECIAL OFFER";
-                        })()}
-                      </span>
+                              if (service.discount_label) return service.discount_label;
+                              if (calculatedPct > 0) return `${calculatedPct}% OFF`;
+                              return "SPECIAL OFFER";
+                            })()}
+                          </span>
+                        )}
+                      </>
                     )}
                   </div>
                   <p className="service-item-date">
