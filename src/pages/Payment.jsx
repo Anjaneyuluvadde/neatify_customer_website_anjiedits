@@ -207,32 +207,7 @@ export default function Payment({ user }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Run ONCE on mount
 
-  // Auto-apply claimed offer as a coupon on mount
-  useEffect(() => {
-    try {
-      const stored = sessionStorage.getItem("claimedOffer");
-      if (stored) {
-        const claimedOffer = JSON.parse(stored);
-        if (claimedOffer && claimedOffer.offerPercentage) {
-          // Only auto-apply if the service is actually in the cart (or if it's a general coupon with no serviceId)
-          const isServiceInCart = !claimedOffer.serviceId || selectedServices.some(s => String(s.id || s.service_id) === String(claimedOffer.serviceId));
-          
-          if (isServiceInCart) {
-            setAppliedCoupon({
-              coupon_code: `BANNER${claimedOffer.offerPercentage}`,
-              discount_percentage: claimedOffer.offerPercentage,
-              discount_amount: null,
-              service_ids: claimedOffer.serviceId ? [claimedOffer.serviceId] : null,
-              bannerId: claimedOffer.bannerId
-            });
-            setCouponStatus({ type: "success", message: `Coupon applied! ${claimedOffer.offerPercentage}% discount` });
-          }
-        }
-      }
-    } catch (e) {
-      console.error("Error parsing claimedOffer:", e);
-    }
-  }, []);
+
 
   /* ================= FETCH ALL ADD-ONS ================= */
   useEffect(() => {
@@ -520,6 +495,49 @@ export default function Payment({ user }) {
         setEmail(data.email || user.email || "");
         setProfileServiceSelected(data.service_selected || null);
         setProfileBannerSelected(data.promotional_banner_selected || null);
+
+        // Auto-apply promotional banner coupon ONLY IF the user originated from the promotional flow
+        try {
+          const stored = sessionStorage.getItem("claimedOffer");
+          if (stored) {
+            const claimedOffer = JSON.parse(stored);
+            
+            // Validate that this claimed offer belongs to the CURRENT user
+            // and that it actually came from the promotional banner
+            if (claimedOffer && claimedOffer.userId === user.id) {
+              const isPromotionalSource = 
+                claimedOffer.source === "promotional_banner" || 
+                claimedOffer.type === "PROMOTIONAL_BANNER" || 
+                claimedOffer.type === "NEW_USER";
+              
+              if (isPromotionalSource) {
+                setAppliedCoupon(prev => {
+                   if (!prev) {
+                      return {
+                        coupon_code: `BANNER${claimedOffer.offerPercentage}`,
+                        discount_percentage: claimedOffer.offerPercentage,
+                        discount_amount: null,
+                        bannerId: claimedOffer.bannerId,
+                        source: "promotional_banner",
+                      };
+                   }
+                   return prev;
+                });
+                setCouponStatus(prev => {
+                   if (!prev || !prev.message) {
+                     return { type: "success", message: `Coupon auto-applied! ${claimedOffer.offerPercentage}% discount` };
+                   }
+                   return prev;
+                });
+              }
+            } else if (claimedOffer && claimedOffer.userId !== user.id) {
+               // Clear stale session storage from another user
+               sessionStorage.removeItem("claimedOffer");
+            }
+          }
+        } catch (e) {
+          console.error("Error parsing claimedOffer:", e);
+        }
 
         const rawPhone = data.phone || "";
         const cleanPhone = rawPhone.replace(/\D/g, "");
@@ -1001,12 +1019,49 @@ export default function Payment({ user }) {
   }, [selectedServices, totalAmount, globalTaxRate]);
 
   const finalSubtotal = totalAmount;
+  const effectivelyAppliedCoupon = useMemo(() => {
+    if (!appliedCoupon) return null;
+
+    const isPromotionalCoupon = 
+      appliedCoupon.bannerId || 
+      appliedCoupon.promotional_banner_id || 
+      appliedCoupon.source === "promotional_banner";
+
+    if (!isPromotionalCoupon) return appliedCoupon;
+
+    const pName = String(profileServiceSelected || "").trim().toLowerCase();
+    
+    let targetServiceId = null;
+    try {
+      const stored = sessionStorage.getItem("claimedOffer");
+      if (stored) {
+        const claimedOffer = JSON.parse(stored);
+        const belongsToCurrentUser = claimedOffer.userId && user?.id && claimedOffer.userId === user.id;
+        if (belongsToCurrentUser && claimedOffer.serviceId) {
+           targetServiceId = String(claimedOffer.serviceId);
+        }
+      }
+    } catch(e) {}
+
+    const hasPromotionalServiceInCart = selectedServices.some(s => {
+      const sName = String(s.title || s.name || "").trim().toLowerCase();
+      const serviceIdStr = String(s.id || s.service_id || "");
+      
+      const isNameMatch = pName && sName && pName === sName;
+      const isIdMatch = targetServiceId && serviceIdStr === targetServiceId;
+      
+      return isNameMatch || isIdMatch;
+    });
+
+    return hasPromotionalServiceInCart ? appliedCoupon : null;
+  }, [appliedCoupon, selectedServices, profileServiceSelected, user]);
+
   const servicesWithPromotions = useMemo(() => {
     // 2. IDENTIFY PROMOTIONAL COUPON
     const isPromotionalCoupon = 
-      appliedCoupon?.bannerId || 
-      appliedCoupon?.promotional_banner_id || 
-      appliedCoupon?.source === "promotional_banner";
+      effectivelyAppliedCoupon?.bannerId || 
+      effectivelyAppliedCoupon?.promotional_banner_id || 
+      effectivelyAppliedCoupon?.source === "promotional_banner";
 
     return selectedServices.map(s => {
       const serviceIdStr = String(s.id || s.service_id || '');
@@ -1016,34 +1071,40 @@ export default function Payment({ user }) {
       let promoDiscountPerUnit = 0;
 
       if (isPromotionalCoupon) {
-        // 4. CHECK SERVICE MATCH
-        const isSelectedPromotionalService = profileServiceSelected === (s.title || s.name);
+        // 4. CHECK SERVICE MATCH (Robust against case and whitespace)
+        const sName = String(s.title || s.name || "").trim().toLowerCase();
+        const pName = String(profileServiceSelected || "").trim().toLowerCase();
+        const isSelectedPromotionalService = pName && sName && pName === sName;
         
-        // 3. CHECK BANNER MATCH
-        const isSelectedPromotionalBanner = profileBannerSelected === appliedCoupon.bannerId;
+        // 3. CHECK BANNER MATCH (Robust)
+        const isSelectedPromotionalBanner = 
+          (profileBannerSelected && effectivelyAppliedCoupon.bannerId)
+            ? profileBannerSelected === effectivelyAppliedCoupon.bannerId
+            : true; // Don't fail if effectivelyAppliedCoupon is missing bannerId but isPromotionalCoupon is true
         
-        // Use session storage fallback only if profile selection is missing
+        // Use session storage fallback
         let useSessionFallback = false;
-        if (!profileServiceSelected && !profileBannerSelected) {
-          try {
-            const stored = sessionStorage.getItem("claimedOffer");
-            if (stored) {
-              const claimedOffer = JSON.parse(stored);
-              // Only use session fallback if it explicitly belongs to the current user
-              const belongsToCurrentUser = claimedOffer.userId && user?.id && claimedOffer.userId === user.id;
-              
-              if (belongsToCurrentUser && claimedOffer && claimedOffer.serviceId && serviceIdStr === String(claimedOffer.serviceId)) {
-                useSessionFallback = true;
-              }
+        try {
+          const stored = sessionStorage.getItem("claimedOffer");
+          if (stored) {
+            const claimedOffer = JSON.parse(stored);
+            const isPromotionalSource = 
+              claimedOffer.source === "promotional_banner" || 
+              claimedOffer.type === "PROMOTIONAL_BANNER" || 
+              claimedOffer.type === "NEW_USER";
+            const belongsToCurrentUser = claimedOffer.userId && user?.id && claimedOffer.userId === user.id;
+            
+            if (belongsToCurrentUser && claimedOffer && claimedOffer.serviceId && String(claimedOffer.serviceId) === serviceIdStr && isPromotionalSource) {
+              useSessionFallback = true;
             }
-          } catch(e) {}
-        }
+          }
+        } catch(e) {}
         
         // 6. servicesWithPromotions
         const shouldApplyPromotionalDiscount = (isSelectedPromotionalService && isSelectedPromotionalBanner) || useSessionFallback;
 
-        if (shouldApplyPromotionalDiscount && appliedCoupon) {
-           promoDiscountPerUnit = (currentPrice * parseFloat(appliedCoupon.discount_percentage)) / 100;
+        if (shouldApplyPromotionalDiscount && effectivelyAppliedCoupon) {
+           promoDiscountPerUnit = (currentPrice * parseFloat(effectivelyAppliedCoupon.discount_percentage)) / 100;
         }
       }
 
@@ -1055,16 +1116,16 @@ export default function Payment({ user }) {
         displayFinalPrice: currentPrice - promoDiscountPerUnit,
       };
     });
-  }, [selectedServices, appliedCoupon, profileServiceSelected, profileBannerSelected, user]);
+  }, [selectedServices, effectivelyAppliedCoupon, profileServiceSelected, profileBannerSelected, user]);
 
   const couponDiscount = useMemo(() => {
-    if (!appliedCoupon) return 0;
+    if (!effectivelyAppliedCoupon) return 0;
 
     // 2. IDENTIFY PROMOTIONAL COUPON
     const isPromotionalCoupon = 
-      appliedCoupon?.bannerId || 
-      appliedCoupon?.promotional_banner_id || 
-      appliedCoupon?.source === "promotional_banner";
+      effectivelyAppliedCoupon?.bannerId || 
+      effectivelyAppliedCoupon?.promotional_banner_id || 
+      effectivelyAppliedCoupon?.source === "promotional_banner";
 
     if (isPromotionalCoupon) {
       // 7. couponDiscount
@@ -1074,23 +1135,23 @@ export default function Payment({ user }) {
 
     // --- NORMAL COUPON LOGIC (Fallback for non-promotional coupons) ---
     let allowedServiceIds = null;
-    if (appliedCoupon.service_ids) {
-      if (Array.isArray(appliedCoupon.service_ids)) {
-        allowedServiceIds = appliedCoupon.service_ids;
+    if (effectivelyAppliedCoupon.service_ids) {
+      if (Array.isArray(effectivelyAppliedCoupon.service_ids)) {
+        allowedServiceIds = effectivelyAppliedCoupon.service_ids;
       } else {
         try {
-          allowedServiceIds = typeof appliedCoupon.service_ids === 'string'
-            ? JSON.parse(appliedCoupon.service_ids)
-            : appliedCoupon.service_ids;
+          allowedServiceIds = typeof effectivelyAppliedCoupon.service_ids === 'string'
+            ? JSON.parse(effectivelyAppliedCoupon.service_ids)
+            : effectivelyAppliedCoupon.service_ids;
         } catch (e) {
-          allowedServiceIds = String(appliedCoupon.service_ids).split(',').map(id => id.trim());
+          allowedServiceIds = String(effectivelyAppliedCoupon.service_ids).split(',').map(id => id.trim());
         }
       }
     }
 
     const eligibleServices = selectedServices.filter(s => {
       const serviceIdStr = String(s.id || s.service_id || '');
-      if (appliedCoupon.service_id && String(appliedCoupon.service_id) !== serviceIdStr) {
+      if (effectivelyAppliedCoupon.service_id && String(effectivelyAppliedCoupon.service_id) !== serviceIdStr) {
         return false;
       }
       if (allowedServiceIds && allowedServiceIds.length > 0) {
@@ -1103,13 +1164,13 @@ export default function Payment({ user }) {
       return sum + (parsePrice(s.price) * (s.quantity || 1));
     }, 0);
 
-    if (appliedCoupon.discount_amount && appliedCoupon.discount_amount > 0) {
-      return Math.min(parseFloat(appliedCoupon.discount_amount), eligibleSubtotal);
+    if (effectivelyAppliedCoupon.discount_amount && effectivelyAppliedCoupon.discount_amount > 0) {
+      return Math.min(parseFloat(effectivelyAppliedCoupon.discount_amount), eligibleSubtotal);
     }
 
-    const pct = parseFloat(appliedCoupon.discount_percentage) || 0;
+    const pct = parseFloat(effectivelyAppliedCoupon.discount_percentage) || 0;
     return (eligibleSubtotal * pct) / 100;
-  }, [appliedCoupon, servicesWithPromotions, selectedServices, profileBannerSelected]);
+  }, [effectivelyAppliedCoupon, servicesWithPromotions, selectedServices, profileBannerSelected]);
 
   const totalAmountAfterCoupon = finalSubtotal - couponDiscount;
   const finalTotalAmountBeforeWallet = totalAmountAfterCoupon + totalTax;
@@ -1693,13 +1754,13 @@ export default function Payment({ user }) {
             <div className="summary-bottom">
               <div className="coupon-section">
                 <h4 className="coupon-title">Have a coupon code?</h4>
-                {appliedCoupon ? (
+                {effectivelyAppliedCoupon ? (
                   <div className="coupon-applied-box" style={{ 
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center', 
                     padding: '12px 16px', backgroundColor: '#ecfdf5', borderRadius: '12px', border: '1px solid #10b981', marginTop: '10px'
                   }}>
                     <span style={{ color: '#065f46', fontWeight: '600', fontSize: '14px' }}>
-                      ✅ {appliedCoupon.coupon_code} applied! ({appliedCoupon.discount_amount && appliedCoupon.discount_amount > 0 ? `₹${appliedCoupon.discount_amount} off` : `${appliedCoupon.discount_percentage}% off`})
+                      ✅ {effectivelyAppliedCoupon.coupon_code} applied! ({effectivelyAppliedCoupon.discount_amount && effectivelyAppliedCoupon.discount_amount > 0 ? `₹${effectivelyAppliedCoupon.discount_amount} off` : `${effectivelyAppliedCoupon.discount_percentage}% off`})
                     </span>
                     <button 
                       onClick={handleRemoveCoupon}

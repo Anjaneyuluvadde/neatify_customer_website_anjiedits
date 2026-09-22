@@ -72,6 +72,7 @@ export default function PromotionalBanners({ user }) {
       serviceId: serviceId || null,
       serviceTitle: serviceTitle || null,
       userId: currentUser.id, // Bind session state to current user
+      source: "promotional_banner", // Explicitly tag as promotional banner flow
     };
 
     sessionStorage.setItem("claimedOffer", JSON.stringify(claimObject));
@@ -109,6 +110,7 @@ export default function PromotionalBanners({ user }) {
           serviceId: serviceId,
           serviceTitle: serviceTitle,
           userId: currentUser.id,
+          source: "promotional_banner", // Explicitly tag as promotional banner flow
         };
         sessionStorage.setItem("claimedOffer", JSON.stringify(claimObject));
         navigate(`/service/${serviceId}`);
@@ -132,17 +134,50 @@ export default function PromotionalBanners({ user }) {
           toast.info(`You have already selected ${profile.service_selected} for the ${banner.offer_percentage}% discount.`);
 
           // Try to recover the ID from sessionStorage to navigate
+          let targetServiceId = null;
           try {
             const stored = sessionStorage.getItem("claimedOffer");
             if (stored) {
               const claimedOffer = JSON.parse(stored);
               if (claimedOffer.bannerId === banner.id && claimedOffer.userId === currentUser.id) {
-                if (claimedOffer.serviceId) {
-                  navigate(`/service/${claimedOffer.serviceId}`);
-                }
+                targetServiceId = claimedOffer.serviceId;
               }
             }
           } catch (e) {}
+
+          // If not in sessionStorage, fetch the service ID from the database
+          if (!targetServiceId) {
+             const { data: serviceData } = await supabase
+               .from("services")
+               .select("id")
+               .eq("title", profile.service_selected)
+               .single();
+
+             if (serviceData && serviceData.id) {
+               targetServiceId = serviceData.id;
+               
+               // Repopulate sessionStorage so Payment.jsx can auto-apply the coupon
+               const claimType = (banner.customer_type === "new" || banner.customer_type === "new_user") 
+                  ? "NEW_USER" 
+                  : "PROMOTIONAL_BANNER";
+               const claimObject = {
+                 type: claimType,
+                 bannerId: banner.id,
+                 offerPercentage: banner.offer_percentage,
+                 claimedAt: new Date().toISOString(),
+                 serviceId: targetServiceId,
+                 serviceTitle: profile.service_selected,
+                 userId: currentUser.id,
+                 source: "promotional_banner", // Explicitly tag as promotional banner flow
+               };
+               sessionStorage.setItem("claimedOffer", JSON.stringify(claimObject));
+             }
+          }
+
+          // Navigate if we found the ID
+          if (targetServiceId) {
+             navigate(`/service/${targetServiceId}`);
+          }
 
           return; // Do not open service selection modal
         }

@@ -571,6 +571,7 @@ footer .footer-content {
     opacity: 0;
     transform: translate(-50%, 10px);
   }
+
   to {
     opacity: 1;
     transform: translate(-50%, 0);
@@ -1360,7 +1361,7 @@ footer .footer-content {
   .explore-services-heading {
     font-size: 22px;
   }
-  
+
   .explore-services-heading::before {
     height: 24px;
   }
@@ -1422,8 +1423,15 @@ footer .footer-content {
 }
 
 @keyframes modalSlideUp {
-  from { transform: translateY(40px) scale(0.95); opacity: 0; }
-  to { transform: translateY(0) scale(1); opacity: 1; }
+  from {
+    transform: translateY(40px) scale(0.95);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
 }
 
 .cleaning-modal-header {
@@ -1604,7 +1612,7 @@ footer .footer-content {
     grid-template-columns: 1fr;
     padding: 8px 24px 32px;
   }
-  
+
   .cleaning-modal-container {
     border-radius: 24px;
   }
@@ -1661,9 +1669,17 @@ footer .footer-content {
 }
 
 @keyframes viewAllBtnShine {
-  0% { left: -60%; }
-  20% { left: 120%; }
-  100% { left: 120%; }
+  0% {
+    left: -60%;
+  }
+
+  20% {
+    left: 120%;
+  }
+
+  100% {
+    left: 120%;
+  }
 }
 
 .view-all-services-btn:hover {
@@ -1718,15 +1734,17 @@ footer .footer-content {
   left: 0;
   width: 100%;
   height: 100%;
-  clip-path: inset(0 100% 0 0); /* initially hidden from the right */
-  overflow: visible; 
+  clip-path: inset(0 100% 0 0);
+  /* initially hidden from the right */
+  overflow: visible;
   /* the slider wrapper inside will have overflow hidden */
 }
 
 .cleaning-character {
   position: absolute;
   top: 50%;
-  right: -60px; /* start slightly off the right edge of the stage */
+  right: -60px;
+  /* start slightly off the right edge of the stage */
   transform: translateY(-50%) scale(0.9);
   z-index: 10;
   opacity: 0;
@@ -1739,14 +1757,15 @@ footer .footer-content {
 .cleaning-character-img {
   width: 180px;
   height: auto;
-  filter: drop-shadow(0 8px 12px rgba(0,0,0,0.15));
+  filter: drop-shadow(0 8px 12px rgba(0, 0, 0, 0.15));
 }
 
 .promotional-slider-wrapper {
   width: 100%;
   height: 100%;
   position: relative;
-  overflow: hidden; /* Hide the sliding overflow */
+  overflow: hidden;
+  /* Hide the sliding overflow */
   border-radius: 20px;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
 }
@@ -1761,7 +1780,8 @@ footer .footer-content {
 .promotional-banner-item {
   width: 100%;
   height: 100%;
-  flex: 0 0 100%; /* Each banner is exactly the width of the wrapper */
+  flex: 0 0 100%;
+  /* Each banner is exactly the width of the wrapper */
   background: #ffffff;
   cursor: pointer;
   display: block;
@@ -1805,6 +1825,7 @@ footer .footer-content {
   .promotion-animation-section {
     min-height: 300px;
   }
+
   .cleaning-character-img {
     width: 120px;
   }
