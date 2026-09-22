@@ -501,38 +501,38 @@ export default function Payment({ user }) {
           const stored = sessionStorage.getItem("claimedOffer");
           if (stored) {
             const claimedOffer = JSON.parse(stored);
-            
+
             // Validate that this claimed offer belongs to the CURRENT user
             // and that it actually came from the promotional banner
             if (claimedOffer && claimedOffer.userId === user.id) {
-              const isPromotionalSource = 
-                claimedOffer.source === "promotional_banner" || 
-                claimedOffer.type === "PROMOTIONAL_BANNER" || 
+              const isPromotionalSource =
+                claimedOffer.source === "promotional_banner" ||
+                claimedOffer.type === "PROMOTIONAL_BANNER" ||
                 claimedOffer.type === "NEW_USER";
-              
+
               if (isPromotionalSource) {
                 setAppliedCoupon(prev => {
-                   if (!prev) {
-                      return {
-                        coupon_code: `BANNER${claimedOffer.offerPercentage}`,
-                        discount_percentage: claimedOffer.offerPercentage,
-                        discount_amount: null,
-                        bannerId: claimedOffer.bannerId,
-                        source: "promotional_banner",
-                      };
-                   }
-                   return prev;
+                  if (!prev) {
+                    return {
+                      coupon_code: `BANNER${claimedOffer.offerPercentage}`,
+                      discount_percentage: claimedOffer.offerPercentage,
+                      discount_amount: null,
+                      bannerId: claimedOffer.bannerId,
+                      source: "promotional_banner",
+                    };
+                  }
+                  return prev;
                 });
                 setCouponStatus(prev => {
-                   if (!prev || !prev.message) {
-                     return { type: "success", message: `Coupon auto-applied! ${claimedOffer.offerPercentage}% discount` };
-                   }
-                   return prev;
+                  if (!prev || !prev.message) {
+                    return { type: "success", message: `Coupon auto-applied! ${claimedOffer.offerPercentage}% discount` };
+                  }
+                  return prev;
                 });
               }
             } else if (claimedOffer && claimedOffer.userId !== user.id) {
-               // Clear stale session storage from another user
-               sessionStorage.removeItem("claimedOffer");
+              // Clear stale session storage from another user
+              sessionStorage.removeItem("claimedOffer");
             }
           }
         } catch (e) {
@@ -934,7 +934,7 @@ export default function Payment({ user }) {
               discount_percentage: data.discount_percentage || data.discount_p || 0,
               discount_amount: data.discount_amount || 0
             };
-            
+
             setAppliedCoupon(normalizedData);
             const isFixedDiscount = normalizedData.discount_amount && normalizedData.discount_amount > 0;
             setCouponStatus({ type: "success", message: `Coupon applied! ${isFixedDiscount ? `₹${normalizedData.discount_amount}` : `${normalizedData.discount_percentage}%`} discount` });
@@ -1022,15 +1022,15 @@ export default function Payment({ user }) {
   const effectivelyAppliedCoupon = useMemo(() => {
     if (!appliedCoupon) return null;
 
-    const isPromotionalCoupon = 
-      appliedCoupon.bannerId || 
-      appliedCoupon.promotional_banner_id || 
+    const isPromotionalCoupon =
+      appliedCoupon.bannerId ||
+      appliedCoupon.promotional_banner_id ||
       appliedCoupon.source === "promotional_banner";
 
     if (!isPromotionalCoupon) return appliedCoupon;
 
     const pName = String(profileServiceSelected || "").trim().toLowerCase();
-    
+
     let targetServiceId = null;
     try {
       const stored = sessionStorage.getItem("claimedOffer");
@@ -1038,18 +1038,18 @@ export default function Payment({ user }) {
         const claimedOffer = JSON.parse(stored);
         const belongsToCurrentUser = claimedOffer.userId && user?.id && claimedOffer.userId === user.id;
         if (belongsToCurrentUser && claimedOffer.serviceId) {
-           targetServiceId = String(claimedOffer.serviceId);
+          targetServiceId = String(claimedOffer.serviceId);
         }
       }
-    } catch(e) {}
+    } catch (e) { }
 
     const hasPromotionalServiceInCart = selectedServices.some(s => {
       const sName = String(s.title || s.name || "").trim().toLowerCase();
       const serviceIdStr = String(s.id || s.service_id || "");
-      
+
       const isNameMatch = pName && sName && pName === sName;
       const isIdMatch = targetServiceId && serviceIdStr === targetServiceId;
-      
+
       return isNameMatch || isIdMatch;
     });
 
@@ -1058,16 +1058,16 @@ export default function Payment({ user }) {
 
   const servicesWithPromotions = useMemo(() => {
     // 2. IDENTIFY PROMOTIONAL COUPON
-    const isPromotionalCoupon = 
-      effectivelyAppliedCoupon?.bannerId || 
-      effectivelyAppliedCoupon?.promotional_banner_id || 
+    const isPromotionalCoupon =
+      effectivelyAppliedCoupon?.bannerId ||
+      effectivelyAppliedCoupon?.promotional_banner_id ||
       effectivelyAppliedCoupon?.source === "promotional_banner";
 
     return selectedServices.map(s => {
       const serviceIdStr = String(s.id || s.service_id || '');
       const currentPrice = parsePrice(s.price);
       const quantity = s.quantity || 1;
-      
+
       let promoDiscountPerUnit = 0;
 
       if (isPromotionalCoupon) {
@@ -1075,36 +1075,36 @@ export default function Payment({ user }) {
         const sName = String(s.title || s.name || "").trim().toLowerCase();
         const pName = String(profileServiceSelected || "").trim().toLowerCase();
         const isSelectedPromotionalService = pName && sName && pName === sName;
-        
+
         // 3. CHECK BANNER MATCH (Robust)
-        const isSelectedPromotionalBanner = 
+        const isSelectedPromotionalBanner =
           (profileBannerSelected && effectivelyAppliedCoupon.bannerId)
             ? profileBannerSelected === effectivelyAppliedCoupon.bannerId
             : true; // Don't fail if effectivelyAppliedCoupon is missing bannerId but isPromotionalCoupon is true
-        
+
         // Use session storage fallback
         let useSessionFallback = false;
         try {
           const stored = sessionStorage.getItem("claimedOffer");
           if (stored) {
             const claimedOffer = JSON.parse(stored);
-            const isPromotionalSource = 
-              claimedOffer.source === "promotional_banner" || 
-              claimedOffer.type === "PROMOTIONAL_BANNER" || 
+            const isPromotionalSource =
+              claimedOffer.source === "promotional_banner" ||
+              claimedOffer.type === "PROMOTIONAL_BANNER" ||
               claimedOffer.type === "NEW_USER";
             const belongsToCurrentUser = claimedOffer.userId && user?.id && claimedOffer.userId === user.id;
-            
+
             if (belongsToCurrentUser && claimedOffer && claimedOffer.serviceId && String(claimedOffer.serviceId) === serviceIdStr && isPromotionalSource) {
               useSessionFallback = true;
             }
           }
-        } catch(e) {}
-        
+        } catch (e) { }
+
         // 6. servicesWithPromotions
         const shouldApplyPromotionalDiscount = (isSelectedPromotionalService && isSelectedPromotionalBanner) || useSessionFallback;
 
         if (shouldApplyPromotionalDiscount && effectivelyAppliedCoupon) {
-           promoDiscountPerUnit = (currentPrice * parseFloat(effectivelyAppliedCoupon.discount_percentage)) / 100;
+          promoDiscountPerUnit = (currentPrice * parseFloat(effectivelyAppliedCoupon.discount_percentage)) / 100;
         }
       }
 
@@ -1122,9 +1122,9 @@ export default function Payment({ user }) {
     if (!effectivelyAppliedCoupon) return 0;
 
     // 2. IDENTIFY PROMOTIONAL COUPON
-    const isPromotionalCoupon = 
-      effectivelyAppliedCoupon?.bannerId || 
-      effectivelyAppliedCoupon?.promotional_banner_id || 
+    const isPromotionalCoupon =
+      effectivelyAppliedCoupon?.bannerId ||
+      effectivelyAppliedCoupon?.promotional_banner_id ||
       effectivelyAppliedCoupon?.source === "promotional_banner";
 
     if (isPromotionalCoupon) {
@@ -1170,7 +1170,7 @@ export default function Payment({ user }) {
 
     const pct = parseFloat(effectivelyAppliedCoupon.discount_percentage) || 0;
     return (eligibleSubtotal * pct) / 100;
-  }, [effectivelyAppliedCoupon, servicesWithPromotions, selectedServices, profileBannerSelected]);
+  }, [effectivelyAppliedCoupon, servicesWithPromotions, selectedServices]);
 
   const totalAmountAfterCoupon = finalSubtotal - couponDiscount;
   const finalTotalAmountBeforeWallet = totalAmountAfterCoupon + totalTax;
@@ -1501,7 +1501,7 @@ export default function Payment({ user }) {
                   } else {
                     query = query.eq("coupon_code", appliedCoupon.coupon_code);
                   }
-                  
+
                   const { error: couponError } = await query;
 
                   if (couponError) {
@@ -1510,7 +1510,7 @@ export default function Payment({ user }) {
                     console.log("✅ Coupon marked as used:", appliedCoupon.coupon_code);
                   }
                 }
-                
+
                 // Referral reward logic moved to database trigger (on COMPLETED status)
 
 
@@ -1728,18 +1728,18 @@ export default function Payment({ user }) {
                   <p className="service-item-date">
                     {date} {MONTHS[month]} {year} at {time}
                   </p>
-                    {service.isAddon && (
-                      <div className="service-item-actions">
-                        <button
-                          className="remove-btn"
-                          onClick={() => removeService(service.id)}
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ))}
+                  {service.isAddon && (
+                    <div className="service-item-actions">
+                      <button
+                        className="remove-btn"
+                        onClick={() => removeService(service.id)}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
 
               {addOns.length > 0 && (
                 <button
@@ -1755,14 +1755,14 @@ export default function Payment({ user }) {
               <div className="coupon-section">
                 <h4 className="coupon-title">Have a coupon code?</h4>
                 {effectivelyAppliedCoupon ? (
-                  <div className="coupon-applied-box" style={{ 
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center', 
+                  <div className="coupon-applied-box" style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                     padding: '12px 16px', backgroundColor: '#ecfdf5', borderRadius: '12px', border: '1px solid #10b981', marginTop: '10px'
                   }}>
                     <span style={{ color: '#065f46', fontWeight: '600', fontSize: '14px' }}>
                       ✅ {effectivelyAppliedCoupon.coupon_code} applied! ({effectivelyAppliedCoupon.discount_amount && effectivelyAppliedCoupon.discount_amount > 0 ? `₹${effectivelyAppliedCoupon.discount_amount} off` : `${effectivelyAppliedCoupon.discount_percentage}% off`})
                     </span>
-                    <button 
+                    <button
                       onClick={handleRemoveCoupon}
                       style={{ background: 'none', border: 'none', color: '#ef4444', fontWeight: '700', cursor: 'pointer', fontSize: '14px' }}
                     >
@@ -1789,7 +1789,7 @@ export default function Payment({ user }) {
                       </button>
                     </div>
                     {suggestedCoupon && (
-                      <div 
+                      <div
                         onClick={() => {
                           setAppliedCoupon(suggestedCoupon);
                           setCouponInput(suggestedCoupon.coupon_code);
@@ -2101,46 +2101,46 @@ export default function Payment({ user }) {
                 {selectedAddOn.duration} mins • {selectedAddOn.service_type || "ADDITIONAL SERVICES"}
               </p>
 
-                <div className="addon-detail-price-row">
-                  {selectedAddOn.original_price && (
-                    <span className="mrp">
-                      {getCurrency(selectedAddOn.original_price)}
-                      {formatPrice(selectedAddOn.original_price)}
-                    </span>
-                  )}
-                  <span className="offer-price">
-                    {getCurrency(selectedAddOn.price)}
-                    {formatPrice(selectedAddOn.price)}
+              <div className="addon-detail-price-row">
+                {selectedAddOn.original_price && (
+                  <span className="mrp">
+                    {getCurrency(selectedAddOn.original_price)}
+                    {formatPrice(selectedAddOn.original_price)}
                   </span>
-                  {(selectedAddOn.discount_percent > 0 || (selectedAddOn.original_price && selectedAddOn.price)) && (
-                    <span className="addon-discount-badge detail-badge">
-                      {selectedAddOn.discount_percent ||
-                        Math.round((1 - parseFloat(String(selectedAddOn.price).replace(/[^\d.]/g, "")) / parseFloat(String(selectedAddOn.original_price).replace(/[^\d.]/g, ""))) * 100)}% OFF
-                    </span>
-                  )}
-                </div>
+                )}
+                <span className="offer-price">
+                  {getCurrency(selectedAddOn.price)}
+                  {formatPrice(selectedAddOn.price)}
+                </span>
+                {(selectedAddOn.discount_percent > 0 || (selectedAddOn.original_price && selectedAddOn.price)) && (
+                  <span className="addon-discount-badge detail-badge">
+                    {selectedAddOn.discount_percent ||
+                      Math.round((1 - parseFloat(String(selectedAddOn.price).replace(/[^\d.]/g, "")) / parseFloat(String(selectedAddOn.original_price).replace(/[^\d.]/g, ""))) * 100)}% OFF
+                  </span>
+                )}
+              </div>
 
-                {selectedServices.find((s) => s.id === selectedAddOn.id) ? (
-                  <div className="addon-detail-quantity">
-                    <button className="qty-btn" onClick={() => removeService(selectedAddOn.id)}>-</button>
-                    <span className="qty-count">
-                      {selectedServices.find((s) => s.id === selectedAddOn.id).quantity}
-                    </span>
-                    <button
-                      className="qty-btn"
-                      onClick={() => addService(selectedAddOn)}
-                    >
-                      +
-                    </button>
-                  </div>
-                ) : (
+              {selectedServices.find((s) => s.id === selectedAddOn.id) ? (
+                <div className="addon-detail-quantity">
+                  <button className="qty-btn" onClick={() => removeService(selectedAddOn.id)}>-</button>
+                  <span className="qty-count">
+                    {selectedServices.find((s) => s.id === selectedAddOn.id).quantity}
+                  </span>
                   <button
-                    className="addon-add-btn shine-btn"
+                    className="qty-btn"
                     onClick={() => addService(selectedAddOn)}
                   >
-                    + Add to Booking
+                    +
                   </button>
-                )}
+                </div>
+              ) : (
+                <button
+                  className="addon-add-btn shine-btn"
+                  onClick={() => addService(selectedAddOn)}
+                >
+                  + Add to Booking
+                </button>
+              )}
 
               <div className="addon-detail-info">
                 {isFetchingDetail ? (
