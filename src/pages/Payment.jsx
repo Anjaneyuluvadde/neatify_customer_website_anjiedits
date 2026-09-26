@@ -988,10 +988,46 @@ export default function Payment({ user }) {
   };
 
   const totalAmount = useMemo(() => {
+    const isPromotionalCoupon =
+      appliedCoupon?.bannerId ||
+      appliedCoupon?.promotional_banner_id ||
+      appliedCoupon?.source === "promotional_banner";
+
     return selectedServices.reduce((sum, s) => {
-      return sum + parsePrice(s.price);
+      let priceToUse = parsePrice(s.price);
+
+      if (isPromotionalCoupon) {
+        const serviceIdStr = String(s.id || s.service_id || '');
+        const sName = String(s.title || s.name || "").trim().toLowerCase();
+        const pName = String(profileServiceSelected || "").trim().toLowerCase();
+        let targetServiceId = null;
+
+        try {
+          const stored = sessionStorage.getItem("claimedOffer");
+          if (stored) {
+            const claimedOffer = JSON.parse(stored);
+            const belongsToCurrentUser = claimedOffer.userId && user?.id && claimedOffer.userId === user.id;
+            if (belongsToCurrentUser && claimedOffer.serviceId) {
+              targetServiceId = String(claimedOffer.serviceId);
+            }
+          }
+        } catch (e) {}
+
+        const isSelectedPromotionalService = (pName && sName && pName === sName) || (targetServiceId && serviceIdStr === targetServiceId);
+        
+        const isSelectedPromotionalBanner =
+          (profileBannerSelected && appliedCoupon.bannerId)
+            ? profileBannerSelected === appliedCoupon.bannerId
+            : true;
+
+        if (isSelectedPromotionalService && isSelectedPromotionalBanner) {
+          priceToUse = s.original_price ? parsePrice(s.original_price) : priceToUse;
+        }
+      }
+
+      return sum + priceToUse;
     }, 0);
-  }, [selectedServices]);
+  }, [selectedServices, appliedCoupon, profileServiceSelected, profileBannerSelected, user]);
 
   const totalOriginalAmount = useMemo(() => {
     return selectedServices.reduce((sum, s) => {
@@ -1069,6 +1105,8 @@ export default function Payment({ user }) {
       const quantity = s.quantity || 1;
 
       let promoDiscountPerUnit = 0;
+      let displayOriginal = currentPrice;
+      let displayFinal = currentPrice;
 
       if (isPromotionalCoupon) {
         // 4. CHECK SERVICE MATCH (Robust against case and whitespace)
@@ -1104,7 +1142,10 @@ export default function Payment({ user }) {
         const shouldApplyPromotionalDiscount = (isSelectedPromotionalService && isSelectedPromotionalBanner) || useSessionFallback;
 
         if (shouldApplyPromotionalDiscount && effectivelyAppliedCoupon) {
-          promoDiscountPerUnit = (currentPrice * parseFloat(effectivelyAppliedCoupon.discount_percentage)) / 100;
+          const baseOriginalPrice = s.original_price ? parsePrice(s.original_price) : currentPrice;
+          promoDiscountPerUnit = (baseOriginalPrice * parseFloat(effectivelyAppliedCoupon.discount_percentage)) / 100;
+          displayOriginal = baseOriginalPrice;
+          displayFinal = baseOriginalPrice - promoDiscountPerUnit;
         }
       }
 
@@ -1112,8 +1153,8 @@ export default function Payment({ user }) {
         ...s,
         promoDiscountPerUnit,
         totalPromoDiscount: promoDiscountPerUnit * quantity,
-        displayOriginalPrice: currentPrice,
-        displayFinalPrice: currentPrice - promoDiscountPerUnit,
+        displayOriginalPrice: displayOriginal,
+        displayFinalPrice: displayFinal,
       };
     });
   }, [selectedServices, effectivelyAppliedCoupon, profileServiceSelected, profileBannerSelected, user]);
